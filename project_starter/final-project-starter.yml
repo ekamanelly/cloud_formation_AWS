@@ -3,16 +3,232 @@ Parameters:
   # but using them will make your cloudformation templates more reusable
   # use them for things that may change over time, such as instance type,
   # VPCs and so on.
+  InfrastructureName:
+      Default: Udegram
+      Type: String
+  VPCCIDR:
+      Description: AMI to use for our base image
+      Type: String
+  PrivateSubnetCIDR1:
+      Description: AMI to use for our base image
+      Type: String
+  PrivateSubnetCIDR2:
+      Description: AMI to use for our base image
+      Type: String   
+  loadBalanceCIDR1:
+      Description: AMI to use for our base image
+      Type: String
+  loadBalanceCIDR2:
+      Description: AMI to use for our base image
+      Type: String      
+  NatGateWayCIDR:
+      Description: AMI to use for our base image
+      Type: String               
 Resources:
-  # instace profile contains the IAM Role name(s) that we want to associate to our auto scaling EC2 Servers
+  # instance profile contains the IAM Role name(s) that we want to associate to our auto scaling EC2 Servers
   # never give too much permissions to your EC2 instances! if they get hacked, the permissions get hacked also!
   # in this example, I create a Role called UdacityS3ReadOnlyC2 and just give it a policy of S3 Read-Only Access
-  ProfileWithRolesForOurApp:
-    Type: AWS::IAM::InstanceProfile
+
+  MainVPC:
+    Type: AWS::EC2::VPC
     Properties: 
-      Roles:
-        - UdacityS3ReadOnlyEC2
+      CidrBlock: !Ref VPCCIDR
+      Tags: 
+        - Key: Name
+          Value: "Main VPC"
+
+  LoadBalancePublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      CidrBlock: !Ref loadBalanceCIDR1
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: Name
+          Value: "load balance subnet"
+      VpcId: !Ref MainVPC
+
+  LoadBalancePublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      CidrBlock: !Ref loadBalanceCIDR2
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: Name
+          Value: "load balance subnet"
+      VpcId: !Ref MainVPC
+      
+  NatGateWayPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      CidrBlock: !Ref NatGateWayCIDR
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: Name
+          Value: "house the NatGw"
+      VpcId: !Ref MainVPC    
+
+  PrivateSubnet1: 
+    Type: AWS::EC2::Subnet
+    Properties: 
+
+      CidrBlock: !Ref PrivateSubnetCIDR1
+      MapPublicIpOnLaunch: false
+      Tags: 
+        - Key: Name
+          Value: "private house two Ec2 instance"
+      VpcId: !Ref MainVPC    
+
+  PrivateSubnet2: 
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PrivateSubnetCIDR2
+      MapPublicIpOnLaunch: false
+      Tags: 
+        - Key: Name
+          Value: "house the remaining two Ec2 instance"
+      VpcId: !Ref MainVPC  
+
+  MainVPcInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: MainVpc internetGW
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: MainVPC
+      InternetGatewayId:
+          Ref: MainVPcInternetGateway      
+  NAT:
+    Type: AWS::EC2::NatGateway
+    Properties:
+        AllocationId:
+          Fn::GetAtt:
+          - EIPForNAT
+          - AllocationId
+        SubnetId:
+          Ref: NatGateWayPublicSubnet
+        Tags:
+        - Key: Name
+          Value: Nat for two Private subnet
+  EIPForNAT:
+    DependsOn: GatewayAttachment
+    Type: AWS::EC2::EIP
+    Properties:
+        Domain: vpc
+
+
+  VPCRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties: 
+          VpcId: !Ref MainVPC
+          Tags: 
+              - Key: Name 
+                Value: !Sub ${InfrastructureName} vpc Routes table
+
+  VPCPublicRoute: 
+      Type: AWS::EC2::Route
+      DependsOn: GatewayAttachment
+      Properties: 
+          RouteTableId: !Ref VPCRouteTable
+          DestinationCidrBlock: 0.0.0.0/0
+          GatewayId: !Ref MainVPcInternetGateway
+  NatGateWayPublicSubnetRouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref VPCRouteTable
+          SubnetId: !Ref NatGateWayPublicSubnet   
+  LoadBalancePublicSubnet2RouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref VPCRouteTable
+          SubnetId: !Ref LoadBalancePublicSubnet2   
+  LoadBalancePublicSubnet1RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref VPCRouteTable
+            SubnetId: !Ref LoadBalancePublicSubnet1   
+
+  PrivateSubnetRouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties: 
+            VpcId: !Ref MainVPC
+            Tags: 
+                - Key: Name 
+                  Value: !Sub ${InfrastructureName} private Routes table   
+  privateSubnetRoute: 
+        Type: AWS::EC2::Route
+        # DependsOn: GatewayAttachment
+        Properties: 
+            RouteTableId: !Ref PrivateSubnetRouteTable
+            DestinationCidrBlock: 0.0.0.0/0
+            NatGatewayId: !Ref NAT                                              
+  PrivateSubnet1RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref PrivateSubnetRouteTable
+            SubnetId: !Ref PrivateSubnet1 
+  PrivateSubnet2RouteTableAssociation:
+          Type: AWS::EC2::SubnetRouteTableAssociation
+          Properties:
+              RouteTableId: !Ref PrivateSubnetRouteTable
+              SubnetId: !Ref PrivateSubnet2 
+              
+ 
+
+
+
+        
+
+
+#  network section         
+#  network section         
+#  network section         
+
+
+  # ProfileWithRolesForOurApp:
+  #   Type: AWS::IAM::InstanceProfile
+  #   Properties: 
+  #     Roles:
+  #       - UdacityS3ReadOnlyEC2
 Outputs: 
+  VPC:
+      Description: A reference to the public subnet in the 1st Availability Zone
+      Value: !Ref MainVPC
+      Export:
+        Name: !Sub ${InfrastructureName}-VPC
+  LBPublicSubnet1:
+      Description: A reference to the public subnet in the 1st Availability Zone
+      Value: !Ref LoadBalancePublicSubnet1
+      Export:
+        Name: !Sub ${InfrastructureName}-LoadBalancePublicSubnet1
+  LBPublicSubnet2:
+      Description: A reference to the public subnet in the 1st Availability Zone
+      Value: !Ref LoadBalancePublicSubnet2
+      Export:
+        Name: !Sub ${InfrastructureName}-LoadBalancePublicSubnet2  
+  PrivateSubnet2:
+    Description: A reference to the public subnet in the 1st Availability Zone
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub ${InfrastructureName}-PrivateSubnet1 
+  PrivateSubnet2:
+      Description: A reference to the public subnet in the 1st Availability Zone
+      Value: !Ref PrivateSubnet2
+      Export:
+        Name: !Sub ${InfrastructureName}-PrivateSubnet2   
+  PrivateSubnets:
+          Description: A list of the private subnets
+          Value: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+          Export:
+            Name: !Sub ${InfrastructureName}-PRIV-NETS                       
   # This is also optional.
   # Bonus points for useful outputs!
   # for example, if you create a Load Balancer

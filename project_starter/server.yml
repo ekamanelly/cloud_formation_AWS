@@ -1,6 +1,6 @@
 
 Parameters:
-
+# doesn't need a json parameter file 
    InfrastructureName:
       Default: Udegram
       Type: String
@@ -9,13 +9,13 @@ Resources:
   ServerTargetGroup:
       Type: AWS::ElasticLoadBalancingV2::TargetGroup
       Properties:
-        # HealthCheckIntervalSeconds: 10
+        HealthCheckIntervalSeconds: 10
         HealthCheckPath: /
         HealthCheckProtocol: HTTP
         HealthyThresholdCount: 2
         Port: 80
         Protocol: HTTP
-        # UnhealthyThresholdCount: 5
+        UnhealthyThresholdCount: 5
         VpcId:
           Fn::ImportValue: !Sub "${InfrastructureName}-VPC"
   ListenerRule:
@@ -109,7 +109,7 @@ Resources:
       # ToDo: AMI ID of Ubuntu Linux machine. Too get one, try creating a VM from the web console. 
       ImageId: ami-08d4ac5b634553e16
       # ToDo: Change the key-pair name, as applicable to you. 
-      KeyName: myKeyValue
+      
       SecurityGroups:
       - Ref: WebServerSecGroup
       InstanceType: t3.medium
@@ -135,6 +135,6 @@ Resources:
 Outputs:
   LBdomain:
     Description: A reference to the public subnet in the 1st Availability Zone
-    Value: !Ref ServerLoadBalancer
+    Value: !Join ["",['http://', !GetAtt ServerLoadBalancer.DNSName]] #thanks for the insight
     Export:
       Name: !Sub ${InfrastructureName}-lbDomain

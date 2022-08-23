@@ -4,31 +4,28 @@ Parameters:
   # use them for things that may change over time, such as instance type,
   # VPCs and so on.
   InfrastructureName:
+      Description: Name of our architecture 
       Default: Udegram
       Type: String
   VPCCIDR:
-      Description: AMI to use for our base image
+      Description: CIDR for of VPC
       Type: String
   PrivateSubnetCIDR1:
-      Description: AMI to use for our base image
+      Description: one of the Two private Subnet that should 2 instance of the server
       Type: String
   PrivateSubnetCIDR2:
-      Description: AMI to use for our base image
+      Description: one of the Two private Subnet that should 2 instance of the server
       Type: String   
   loadBalanceCIDR1:
-      Description: AMI to use for our base image
+      Description: Public subnet for load balance in first AZ
       Type: String
   loadBalanceCIDR2:
-      Description: AMI to use for our base image
+      Description: Public subnet for load balance in second AZ
       Type: String      
   NatGateWayCIDR:
-      Description: AMI to use for our base image
+      Description: Public subnet for our NATgateWay ( can share subnet with load balance AZ one)
       Type: String               
 Resources:
-  # instance profile contains the IAM Role name(s) that we want to associate to our auto scaling EC2 Servers
-  # never give too much permissions to your EC2 instances! if they get hacked, the permissions get hacked also!
-  # in this example, I create a Role called UdacityS3ReadOnlyC2 and just give it a policy of S3 Read-Only Access
-
   MainVPC:
     Type: AWS::EC2::VPC
     Properties: 
@@ -45,7 +42,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags: 
         - Key: Name
-          Value: "load balance subnet"
+          Value: "load balance subnet in first AZ"
       VpcId: !Ref MainVPC
 
   LoadBalancePublicSubnet2:
@@ -56,7 +53,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags: 
         - Key: Name
-          Value: "load balance subnet"
+          Value: "load balance subnet in second AZ"
       VpcId: !Ref MainVPC
       
   NatGateWayPublicSubnet:
@@ -67,18 +64,17 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags: 
         - Key: Name
-          Value: "house the NatGw"
+          Value: "subnet for NatGateway"
       VpcId: !Ref MainVPC    
 
   PrivateSubnet1: 
     Type: AWS::EC2::Subnet
     Properties: 
-
       CidrBlock: !Ref PrivateSubnetCIDR1
       MapPublicIpOnLaunch: false
       Tags: 
         - Key: Name
-          Value: "private house two Ec2 instance"
+          Value: "private subnet house two Ec2 instance"
       VpcId: !Ref MainVPC    
 
   PrivateSubnet2: 
@@ -89,9 +85,10 @@ Resources:
       MapPublicIpOnLaunch: false
       Tags: 
         - Key: Name
-          Value: "house the remaining two Ec2 instance"
+          Value: "Private subnet house the remaining two Ec2 instance"
       VpcId: !Ref MainVPC  
 
+# internet GW and attachment 
   MainVPcInternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
@@ -105,7 +102,9 @@ Resources:
       VpcId:
         Ref: MainVPC
       InternetGatewayId:
-          Ref: MainVPcInternetGateway      
+          Ref: MainVPcInternetGateway  
+
+# Nat GW and EIP            
   NAT:
     Type: AWS::EC2::NatGateway
     Properties:
@@ -118,13 +117,14 @@ Resources:
         Tags:
         - Key: Name
           Value: Nat for two Private subnet
+
   EIPForNAT:
     DependsOn: GatewayAttachment
     Type: AWS::EC2::EIP
     Properties:
         Domain: vpc
 
-
+# public  route table, rule and associated public subnets 
   VPCRouteTable:
       Type: AWS::EC2::RouteTable
       Properties: 
@@ -140,22 +140,26 @@ Resources:
           RouteTableId: !Ref VPCRouteTable
           DestinationCidrBlock: 0.0.0.0/0
           GatewayId: !Ref MainVPcInternetGateway
+
   NatGateWayPublicSubnetRouteTableAssociation:
       Type: AWS::EC2::SubnetRouteTableAssociation
       Properties:
           RouteTableId: !Ref VPCRouteTable
           SubnetId: !Ref NatGateWayPublicSubnet   
+
   LoadBalancePublicSubnet2RouteTableAssociation:
       Type: AWS::EC2::SubnetRouteTableAssociation
       Properties:
           RouteTableId: !Ref VPCRouteTable
           SubnetId: !Ref LoadBalancePublicSubnet2   
+
   LoadBalancePublicSubnet1RouteTableAssociation:
         Type: AWS::EC2::SubnetRouteTableAssociation
         Properties:
             RouteTableId: !Ref VPCRouteTable
             SubnetId: !Ref LoadBalancePublicSubnet1   
 
+# Private route table, rule and associated Private subnets 
   PrivateSubnetRouteTable:
         Type: AWS::EC2::RouteTable
         Properties: 
@@ -165,7 +169,6 @@ Resources:
                   Value: !Sub ${InfrastructureName} private Routes table   
   privateSubnetRoute: 
         Type: AWS::EC2::Route
-        # DependsOn: GatewayAttachment
         Properties: 
             RouteTableId: !Ref PrivateSubnetRouteTable
             DestinationCidrBlock: 0.0.0.0/0
@@ -181,26 +184,10 @@ Resources:
               RouteTableId: !Ref PrivateSubnetRouteTable
               SubnetId: !Ref PrivateSubnet2 
               
- 
 
-
-
-        
-
-
-#  network section         
-#  network section         
-#  network section         
-
-
-  # ProfileWithRolesForOurApp:
-  #   Type: AWS::IAM::InstanceProfile
-  #   Properties: 
-  #     Roles:
-  #       - UdacityS3ReadOnlyEC2
 Outputs: 
   VPC:
-      Description: A reference to the public subnet in the 1st Availability Zone
+      Description: main house 
       Value: !Ref MainVPC
       Export:
         Name: !Sub ${InfrastructureName}-VPC
@@ -210,40 +197,23 @@ Outputs:
       Export:
         Name: !Sub ${InfrastructureName}-LoadBalancePublicSubnet1
   LBPublicSubnet2:
-      Description: A reference to the public subnet in the 1st Availability Zone
+      Description: A reference to the public subnet in the 2nd Availability Zone
       Value: !Ref LoadBalancePublicSubnet2
       Export:
         Name: !Sub ${InfrastructureName}-LoadBalancePublicSubnet2  
-  PrivateSubnet2:
-    Description: A reference to the public subnet in the 1st Availability Zone
-    Value: !Ref PrivateSubnet1
-    Export:
-      Name: !Sub ${InfrastructureName}-PrivateSubnet1 
-  PrivateSubnet2:
-      Description: A reference to the public subnet in the 1st Availability Zone
-      Value: !Ref PrivateSubnet2
-      Export:
-        Name: !Sub ${InfrastructureName}-PrivateSubnet2   
   PrivateSubnets:
-          Description: A list of the private subnets
+          Description: Private subnets for auto scaling group
           Value: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
           Export:
             Name: !Sub ${InfrastructureName}-PRIV-NETS                       
-  # This is also optional.
-  # Bonus points for useful outputs!
-  # for example, if you create a Load Balancer
-  # it's nice to output the URL to it here, so that we don't have to go to the console to get it.
+  # PrivateSubnet2:
+  #   Description: A reference to the public subnet in the 1st Availability Zone
+  #   Value: !Ref PrivateSubnet1
+  #   Export:
+  #     Name: !Sub ${InfrastructureName}-PrivateSubnet1 
+  # PrivateSubnet2:
+  #     Description: A reference to the public subnet in the 1st Availability Zone
+  #     Value: !Ref PrivateSubnet2
+  #     Export:
+  #       Name: !Sub ${InfrastructureName}-PrivateSubnet2   
 
-# Sample UserData
-# When creating your Launch Configuration, you may need a UserData script
-# here's one that you can use for Ubuntu Linux that will:
-# Install Apache Web Server, Start it, and create an index.html that will be displayed
-# when you visit the IP address of this server with your web browser
-#Here it is:
-#
-#          #!/bin/bash
-#          apt-get update -y
-#          apt-get install apache2 -y
-#          systemctl start apache2.service
-#          cd /var/www/html
-#          echo "Udacity Demo Web Server Up and Running!" > index.html

@@ -3,7 +3,7 @@ I am very excited to be your host and at the same time your tour guide. You are 
 
 
 
-![Image description](project_starter/diagram.png)
+![Image description](project_starter/diagram.jpeg)
 
 Let me start by showing you how to find your way around in case of any unforeseen incidence. First and foremost, we have two sections here at this VPC and we refer to them as **AZ**. On your way here you passed the very secure gate, Aws staffs calls it **IGW**, but I prefer the full name ***internet Gateway***. The strength of the **IGW** is what we bank on and it's the only way in or out of this VPC. Only authorized users can access it and you can see it's location on the map.
 
